@@ -20,3 +20,60 @@ So the Mac then? Earlier when talking about logging BLE traffic for iOS I alread
 If you plan on developing an application that communicates with your Peripheral then you will probably have all of this information already.
 
 ## Let's get started
+### Project setup
+The first step is to create a new MacOS App project.
+
+![alt text](./new_project.png "Create new project")
+
+After going through the new project Wizard you should have something like this:
+
+![alt text](./new_project_2.png "New project overview")
+
+### Building the UI
+This application does not need much of a UI, but its useful to have some. I bet we could use:
+- A button to start the proxy
+- A button to stop the proxy
+- Some textfield where we can output useful logging
+- A button to clear the logs
+
+So let's open up the Main.storyboard of our project and add these components so that it looks like this:
+
+![alt text](./app_layout.png "App UI layout")
+
+Next connect the IBActions and IBOutlets for the views you added so that you get the following in the `ViewController` class.
+
+```swift
+import Cocoa
+
+class ViewController: NSViewController {
+    
+    @IBOutlet weak var startProxyButton: NSButton!
+    @IBOutlet weak var stopProxyButton: NSButton!
+    @IBOutlet weak var logView: NSTextField!
+    
+    override func viewDidLoad() {
+        super.viewDidLoad()
+
+        // Do any additional setup after loading the view.
+    }
+
+    override var representedObject: Any? {
+        didSet {
+        // Update the view, if already loaded.
+        }
+    }
+
+    @IBAction func startProxy(_ sender: Any) {
+    }
+    
+    @IBAction func stopProxy(_ sender: Any) {
+    }
+    
+    @IBAction func clearLog(_ sender: Any) {
+    }
+}
+
+```
+
+### Creating the BLECentral
+Now that we have the project setup and UI done, the next thing we need is to create the Central that will connect to your Peripheral device.
