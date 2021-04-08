@@ -77,3 +77,25 @@ class ViewController: NSViewController {
 
 ### Creating the BLECentral
 Now that we have the project setup and UI done, the next thing we need is to create the Central that will connect to your Peripheral device.
+
+So lets create a new file in our project that we call `BleCentral.swift`. In this file we will add two things, the BleCentral class and a delegate protocol for this class.
+
+Let's start with the delegate protocol. The BleCentral that we are about to make needs to be able to communicate a couple of things to its delegate, these are:
+- That it has connected to the Peripheral
+- That it has disconnected from the Peripheral, including a reason why
+- That it has read data from the Peripheral
+- That it has written data to the Peripheral
+- That it has received a notify from the Peripheral
+- Log messages that could be useful to print in the logView
+
+So we create a BleCentralDelegate protocol at the top of the `BleCentral.swift` that contains the following:
+```swift
+protocol BleCentralDelegate {
+    func connected()
+    func disconnected(reason: String)
+    func dataRead(data: Data)
+    func dataWritten()
+    func dataReceivedFromPeripheral(data: Data)
+    func logMessage(message: String)
+}
+```
