@@ -83,19 +83,17 @@ So lets create a new file in our project that we call `BleCentral.swift`. In thi
 Let's start with the delegate protocol. The BleCentral that we are about to make needs to be able to communicate a couple of things to its delegate, these are:
 - That it has connected to the peripheral
 - That it has disconnected from the peripheral, including a reason why
-- That it has read data from the peripheral
+- That it has received data from the peripheral
 - That it has written data to the peripheral
-- That it has received a notify from the peripheral
 - Log messages that could be useful to print in the logView
 
 So we create a `BleCentralDelegate` protocol at the top of the `BleCentral.swift` that contains the following:
 ```swift
 protocol BleCentralDelegate {
-    func connected()
+    func connected(services: [BleService])
     func disconnected(reason: String)
-    func dataRead(data: Data)
-    func dataWritten()
-    func dataReceivedFromPeripheral(data: Data)
+    func dataWritten(onCharacteristicWithUUID: CBUUID, withResult: CBATTError.Code)
+    func dataReceived(data: Data, onCharacteristicWithUUID: CBUUID)
     func logMessage(message: String)
 }
 ```
@@ -109,6 +107,8 @@ Also let's give this class public methods so that it can be told to:
 - Stop the connection to the peripheral
 - Read data from a characteristic on the peripheral
 - Write data to a characteristic on the peripheral
+- Register for notifications on characteristic updates
+- Unregister from notifications on characteristic updates
 
 All of the above means we add the following code to `BleCentral.swift` below the `BleCentralDelegate` protocol:
 ```swift
@@ -135,8 +135,16 @@ class BleCentral: NSObject, CBCentralManagerDelegate {
         
     }
     
-    func writeData(characteristicUUID: CBUUID, data: Data) {
+    func writeData(characteristicUUID: CBUUID, data: Data, writeType: CBCharacteristicWriteType) {
         
+    }
+
+    func registerForNotifications(characteristicUUID: CBUUID) {
+
+    }
+
+    func unregisterFromNotifications(characteristicUUID: CBUUID) {
+
     }
     
     func centralManagerDidUpdateState(_ central: CBCentralManager) {
@@ -385,3 +393,66 @@ private func servicesAndCharacteristicsComplete(_ services: [BleService]) -> Boo
 }
 ```
 
+Now that our central is able to connect to the peripheral device, it is mostly done. You have probably noticed however that we have left a few of the public methods we created in the beginning unimplemented so far. So let's add implementations for these methods to finish up the central.
+
+We start with reading data from a characteristic. To do this we added the public method `readData(characteristicUUID: CBUUID)` which we can implement like this:
+``` swift
+func readData(characteristicUUID: CBUUID) {
+    if let peripheral = self.peripheral, let characteristic = findCharacteristic(characteristicUUID) {
+        self.delegate?.logMessage(message: "Reading from peripheral on characteristic: \(characteristicUUID.uuidString)")
+        peripheral.readValue(for: characteristic)
+    }
+}
+
+private func findCharacteristic(_ characteristicUUID: CBUUID) -> CBCharacteristic? {
+    if let services = self.services {
+        for service in services {
+            if let bleCharacteristic = service.characteristics?.first(where: { (bleCharacteristic) -> Bool in
+                return bleCharacteristic.uuid == characteristicUUID
+            }) {
+                return bleCharacteristic.characteristic
+            }
+        }
+    }
+    return nil
+}
+```
+
+We also have the option to write data to a characteristic, for which we added the method `writeData(characteristicUUID: CBUUID, data: Data, writeType: CBCharacteristicWriteType)`. Implement that as:
+``` swift
+func writeData(characteristicUUID: CBUUID, data: Data, writeType: CBCharacteristicWriteType) {
+    if let peripheral = self.peripheral, let characteristic = findCharacteristic(characteristicUUID) {
+        self.delegate?.logMessage(message: "Writing to peripheral on characteristic: \(characteristicUUID.uuidString) -> \(data.hexEncodedString())")
+        peripheral.writeValue(data, for: characteristic, type: writeType)
+    }
+}
+```
+
+Adding this will give you a compiler error that `Value of type 'Data' has no member 'hexEncodedString'`. We can add that by create a new file called `Data+Hex.swift` and giving it the following contents:
+```swift
+import Foundation
+
+extension Data {
+    struct HexEncodingOptions: OptionSet {
+        let rawValue: Int
+        static let upperCase = HexEncodingOptions(rawValue: 1 << 0)
+    }
+    
+    func hexEncodedString(options: HexEncodingOptions = []) -> String {
+        let format = options.contains(.upperCase) ? "%02hhX" : "%02hhx"
+        return map { String(format: format, $0) }.joined()
+    }
+}
+```
+
+In the case of a confirmed write in BLE, the delegate of our central needs to know that the write request was completed and what the result was. Our central can be informed of this through the `CBPeripheralDelegate` method `peripheral:(CBPeripheral *)peripheral didWriteValueForCharacteristic:(CBCharacteristic *)characteristic error:(nullable NSError *)error`, so let's implement that as well:
+```swift
+func peripheral(_ peripheral: CBPeripheral, didWriteValueFor characteristic: CBCharacteristic, error: Error?) {
+    if let error = error {
+        self.delegate?.disconnected(reason: "Writing data to peripheral on characteristic \(characteristic.uuid.uuidString) failed with error: \(error).")
+        self.delegate?.dataWritten(onCharacteristicWithUUID: characteristic.uuid, withResult: CBATTError.unlikelyError)
+    } else {
+        self.delegate?.dataWritten(onCharacteristicWithUUID: characteristic.uuid, withResult: CBATTError.success)
+    }
+}
+```
