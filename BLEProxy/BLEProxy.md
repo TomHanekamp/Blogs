@@ -107,8 +107,6 @@ Also let's give this class public methods so that it can be told to:
 - Stop the connection to the peripheral
 - Read data from a characteristic on the peripheral
 - Write data to a characteristic on the peripheral
-- Register for notifications on characteristic updates
-- Unregister from notifications on characteristic updates
 
 All of the above means we add the following code to `BleCentral.swift` below the `BleCentralDelegate` protocol:
 ```swift
@@ -137,14 +135,6 @@ class BleCentral: NSObject, CBCentralManagerDelegate {
     
     func writeData(characteristicUUID: CBUUID, data: Data, writeType: CBCharacteristicWriteType) {
         
-    }
-
-    func registerForNotifications(characteristicUUID: CBUUID) {
-
-    }
-
-    func unregisterFromNotifications(characteristicUUID: CBUUID) {
-
     }
     
     func centralManagerDidUpdateState(_ central: CBCentralManager) {
@@ -369,6 +359,9 @@ func peripheral(_ peripheral: CBPeripheral, didDiscoverCharacteristicsFor servic
                     characteristic.uuid == expectedCharacteristic.uuid
                 }) {
                     expectedCharacteristic.characteristic = characteristic
+                    if (characteristic.properties.contains(.notify) || characteristic.properties.contains(.indicate)) {
+                        self.peripheral?.setNotifyValue(true, for: characteristic)
+                    }
                 }
             }
         }
@@ -382,9 +375,9 @@ func peripheral(_ peripheral: CBPeripheral, didDiscoverCharacteristicsFor servic
 }
 ```
 
-Once again we first check if there was an error and disconnect if this is the case. We also check if we were able to discover any characteristics for the service and if not, we treat it as an error and disconnect. If there was no error and characteristics were discovered we check them to see if they match characteristics we expect. If so we add the CBCharacteristic instance to the BleCharacteristic object. In the end we check if `servicesAndCharacteristicsComplete()` returns true. If this is the case, we can notify our delegate that we are fully connected to the periperhal.
+Once again we first check if there was an error and disconnect if this is the case. We also check if we were able to discover any characteristics for the service and if not, we treat it as an error and disconnect. If there was no error and characteristics were discovered we check them to see if they match characteristics we expect. If so we add the CBCharacteristic instance to the BleCharacteristic object. In the case that the characteristic has the `.notify` or `.indicate` property, we also register central to receive updates whenever the value of this characteristic changes. I had originally planned to do this only when the app connecting to my proxy registered for notifications. In my case however one of the characteristics that my app registers on for notifications is secured with a password which needs to be entered in the proxy when it registers for notifications on that characteristic. By already registering for notifications on all characteristics that support it when making the connection to the peripheral I can enter the passwords at that time before even connecting my app to the proxy. The peripheral we create later ensures that the proxy only sends updates to centrals that have registered themselves, so the only downside is that our proxy receives a bit more information from the peripheral device than it strictly needs to, but that should not be a problem.
 
-The method `servicesAndCharacteristicsComplete()` is one we do not yet have in the central, so lets add it:
+In the end of the method we check if `servicesAndCharacteristicsComplete()` returns true. If this is the case, we can notify our delegate that we are fully connected to the periperhal. The method `servicesAndCharacteristicsComplete()` is one we do not yet have in the central, so lets add it:
 ```swift
 private func servicesAndCharacteristicsComplete(_ services: [BleService]) -> Bool {
     return services.allSatisfy({ (bleService) -> Bool in
@@ -455,29 +448,6 @@ func peripheral(_ peripheral: CBPeripheral, didWriteValueFor characteristic: CBC
         self.delegate?.dataWritten(onCharacteristicWithUUID: characteristic.uuid, withResult: CBATTError.unlikelyError)
     } else {
         self.delegate?.dataWritten(onCharacteristicWithUUID: characteristic.uuid, withResult: CBATTError.success)
-    }
-}
-```
-
-The last methods we need to fill in are `registerForNotifications(characteristicUUID: CBUUID)` and `unregisterFromNotifications(characteristicUUID: CBUUID)`, which we will implement as follows:
-```swift
-func registerForNotifications(characteristicUUID: CBUUID) {
-    if let peripheral = self.peripheral, let characteristic = findCharacteristic(characteristicUUID) {
-        if characteristic.properties.contains(.notify) || characteristic.properties.contains(.indicate) {
-            peripheral.setNotifyValue(true, for: characteristic)
-        } else {
-            delegate?.logMessage(message: "registerForNotifications requested for characteristic \(characteristicUUID) that does not allow such actions.")
-        }
-    }
-}
-
-func unregisterFromNotifications(characteristicUUID: CBUUID) {
-    if let peripheral = self.peripheral, let characteristic = findCharacteristic(characteristicUUID) {
-        if characteristic.properties.contains(.notify) || characteristic.properties.contains(.indicate) {
-            peripheral.setNotifyValue(false, for: characteristic)
-        } else {
-            delegate?.logMessage(message: "registerForNotifications requested for characteristic \(characteristicUUID.uuidString) that does not allow such actions.")
-        }
     }
 }
 ```
@@ -589,8 +559,7 @@ Let's start with the delegate protocol again. The BlePeripheral that we are abou
 - That it has stopped advertising, including a reason why
 - To read data was received from a central
 - To write data was received from a central
-- To register for notifications on characteristic updates
-- To unregister from notifications on characteristic updates
+- Log messages that could be useful to print in the logView
 
 So we create a `BlePeripheralDelegate` protocol at the top of the `BlePeripheral.swift` that contains the following:
 ```swift
@@ -599,8 +568,7 @@ protocol BlePeripheralDelegate {
     func advertisingStopped(reason: String)
     func read(fromCharacteristicUUID uuid: CBUUID)
     func write(data: Data, toCharacteristicUUID uuid: CBUUID)
-    func registerForNotifications(onCharacteristicWithUUID uuid: CBUUID)
-    func unregisterFromNotifications(onCharacteristicWithUUID uuid: CBUUID)
+    func logMessage(message: String)
 }
 ```
 
@@ -689,16 +657,32 @@ I must admit that the implementation of the `getPermissions` method is a bit of 
 
 Since we are making a debug tool, encryption seems unnecessary to me so the last two options can be disregarded. It is possible to only specify a single `CBAttributePermissions` value for a characteristic and it made sense to me that any allowed to write would also be allowed to read, which lead to the implementation above.
 
-Now that the services and characteristics are ready, we can start advertising by changing the `startAdvertising` method to:
+Now that the services and characteristics are ready, we can register our services and start advertising by changing the `startAdvertising` method to:
 ```swift
 func startAdvertising(services: [BleService]) {
     self.initialiseServicesAndCharacteristics(services: services)
+    
+    for service in self.services {
+        self.peripheralManager?.add(service)
+    }
+    
     self.peripheralManager?.startAdvertising([
         CBAdvertisementDataServiceUUIDsKey : self.services.map({ (service) -> CBUUID in
             return service.uuid
         }),
         CBAdvertisementDataLocalNameKey: BleConstants.DEVICE_NAME,
-    ])
+    ])     
+}
+```
+
+To get notified that our service was in fact registered, we can add:
+```swift
+func peripheralManager(_ peripheral: CBPeripheralManager, didAdd service: CBService, error: Error?) {
+    if let error = error {
+        self.delegate?.advertisingStopped(reason: "There was an error when adding the service \(service.uuid.uuidString), error: \(error)")
+    } else {
+        self.delegate?.logMessage(message: "The service \(service.uuid.uuidString) was added.")
+    }
 }
 ```
 
@@ -713,16 +697,12 @@ func peripheralManagerDidStartAdvertising(_ peripheral: CBPeripheralManager, err
 }
 ```
 
-To also make our services and characteristics known to the world, change `peripheralManagerDidUpdateState` to:
+We should also implement the required method on `CBPeripheralManagerDelegate`. There is no need to do anything special here since we know Bluetooth is powered on, after all we are already connected to the peripheral device. However just in case that somehow the peripheral state is not `.poweredOn`, we should at least notify our delegate.
 ```swift
 func peripheralManagerDidUpdateState(_ peripheral: CBPeripheralManager) {
     if peripheral.state != .poweredOn {
         self.delegate?.advertisingStopped(reason: "Bluetooth is turned off.")
         return
-    }
-    
-    for service in self.services {
-        self.peripheralManager?.add(service)
     }
 }
 ```
@@ -804,37 +784,23 @@ func dataReceived(data: Data, onCharacteristicUUID uuid: CBUUID) {
 }
 ```
 
-This method does a little more than only respond to requests. It also ensure that the value is set onto the characteristic. Through the last line of the method, `self.peripheralManager?.updateValue(data, for: characteristic, onSubscribedCentrals: nil)`, it also ensures that any central that has subscribed to updates to this characteristics value gets notified.
+This method does a little more than only respond to requests. It also ensure that the value is set onto the characteristic. Through the last line of the method, `self.peripheralManager?.updateValue(data, for: characteristic, onSubscribedCentrals: nil)`, it also ensures that any central that has subscribed to updates to this characteristics value gets notified. 
 
-The only thing that our peripheral is missing now is that it needs to tell the delegate register for notifications when it receives incoming registrations from centrals and unregister from notifications when the last central has unregistered. To get this last bit in, add `private var registrations: [CBCharacteristic: [CBCentral]] = [:]` to the class and add `self.registrations = [:]` to the beginning of `startAdvertising`. Finally, add the following two methods:
+As I mentioned earlier when we were creating the central, our proxy will have already registered itself for notifications on all characteristics that support this. The documentation for the `updateValue` method we called just now promises to only send notifications to centrals that have registered to receive them. This means there is no need for our proxy to track for itself which centrals have registered for notifications and which have not. There is no harm however in implementing the two `CBPeripheralManagerDelegate` methods below and logging that centrals did in fact register.
 ```swift
 func peripheralManager(_ peripheral: CBPeripheralManager, central: CBCentral, didSubscribeTo characteristic: CBCharacteristic) {
-    if var registrationsForCharacteristic = self.registrations[characteristic] {
-        if (!registrationsForCharacteristic.contains(central)) {
-            registrationsForCharacteristic.append(central)
-        }
-    } else {
-        self.registrations[characteristic] = [central]
-        self.delegate?.registerForNotifications(onCharacteristicWithUUID: characteristic.uuid)
-    }
+    self.delegate?.logMessage(message: "Central \(central.identifier) has registered for notifications on characteristic \(characteristic.uuid.uuidString)")
 }
 
 func peripheralManager(_ peripheral: CBPeripheralManager, central: CBCentral, didUnsubscribeFrom characteristic: CBCharacteristic) {
-    if var registrationsForCharacteristic = self.registrations[characteristic] {
-        registrationsForCharacteristic.removeAll { (centralRegistration) -> Bool in
-            centralRegistration.identifier == central.identifier
-        }
-        if registrationsForCharacteristic.isEmpty {
-            self.delegate?.unregisterFromNotifications(onCharacteristicWithUUID: characteristic.uuid)
-        }
-    }
+    self.delegate?.logMessage(message: "Central \(central.identifier) has unregistered from notifications on characteristic \(characteristic.uuid.uuidString)")
 }
 ```
 
 With that, our peripheral should be ready to go.
 
 ### Using the BLEPeripheral
-To use the peripheral we created means we have to update the ViewController. So open up `ViewController.swift` and change the contents to this:
+Finally, to use the peripheral we created means we have to update the ViewController. So open up `ViewController.swift` and change the contents to this:
 ```swift
 import Cocoa
 import CoreBluetooth
@@ -898,27 +864,17 @@ class ViewController: NSViewController, BleCentralDelegate, BlePeripheralDelegat
     }
     
     func write(data: Data, toCharacteristicUUID uuid: CBUUID) {
-        log("Writing data \(data) from central to peripheral on characteristic \(uuid.uuidString)")
+        log("Writing data \(data.hexEncodedString()) from central to peripheral on characteristic \(uuid.uuidString)")
         self.bleCentral?.writeData(characteristicUUID: uuid, data: data, writeType: .withResponse)
     }
     
-    func registerForNotifications(onCharacteristicWithUUID uuid: CBUUID) {
-        log("Registering for notifications on characteristic \(uuid.uuidString)")
-        self.bleCentral?.registerForNotifications(characteristicUUID: uuid)
-    }
-    
-    func unregisterFromNotifications(onCharacteristicWithUUID uuid: CBUUID) {
-        log("Unregistering from notifications on characteristic \(uuid.uuidString)")
-        self.bleCentral?.unregisterFromNotifications(characteristicUUID: uuid)
-    }
-    
     func dataWritten(onCharacteristicWithUUID uuid: CBUUID, withResult result: CBATTError.Code) {
-        log("Data written from central to peripheral on characteristic \(uuid.uuidString) with result: \(result)")
+        log("Data written from central to peripheral on characteristic \(uuid.uuidString) with result: \(result.rawValue)")
         self.blePeripheral?.confirmWriteRequest(onCharacteristicUUID: uuid, withResult: result)
     }
     
     func dataReceived(data: Data, onCharacteristicWithUUID uuid: CBUUID) {
-        log("Received \(data) from peripheral to pass to central on characteristic \(uuid.uuidString)")
+        log("Received \(data.hexEncodedString()) from peripheral to pass to central on characteristic \(uuid.uuidString)")
         self.blePeripheral?.dataReceived(data: data, onCharacteristicUUID: uuid)
     }
     
@@ -931,3 +887,7 @@ class ViewController: NSViewController, BleCentralDelegate, BlePeripheralDelegat
     }
 }
 ```
+
+This should be the last thing you need to get the proxy application up and running, so go ahead and start it up. You should the proxy connect to the peripheral device and you should then be able to fire up your application and connect to the proxy just as it would be that peripheral device. With all traffic going over the proxy you can now use PacketLogger to inspect it to your heart's content.
+
+If you are interested, the complete solution can be found [on Github](https://github.com/Luminis-Arnhem/BLEProxy). Just take care to change the BLEConstants that I have left open to values that fit your peripheral device.
