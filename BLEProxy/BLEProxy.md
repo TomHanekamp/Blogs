@@ -377,7 +377,7 @@ func peripheral(_ peripheral: CBPeripheral, didDiscoverCharacteristicsFor servic
 
 Once again we first check if there was an error and disconnect if this is the case. We also check if we were able to discover any characteristics for the service and if not, we treat it as an error and disconnect. If there was no error and characteristics were discovered we check them to see if they match characteristics we expect. If so we add the CBCharacteristic instance to the BleCharacteristic object. 
 
-In the case that the characteristic has the `.notify` or `.indicate` property, we also register central to receive updates whenever the value of this characteristic changes. I had originally planned to do this only when the app connecting to my proxy registered for notifications. In my case however one of the characteristics that my app registers on for notifications is secured with a password which needs to be entered in the proxy when it registers for notifications on that characteristic. By already registering for notifications on all characteristics that support it when making the connection to the peripheral I can enter the passwords at that time before even connecting my app to the proxy. The peripheral we create later ensures that the proxy only sends updates to centrals that have registered themselves, so the only downside is that our proxy receives a bit more information from the peripheral device than it strictly needs to, but that should not be a problem.
+In the case that the characteristic has the `.notify` or `.indicate` property, we also register the central to receive updates whenever the value of this characteristic changes. I had originally planned to do this only when the app connecting to my proxy registered for notifications. In my case however one of the characteristics that my app registers on for notifications is secured with a password which needs to be entered in the proxy when it registers for notifications on that characteristic. By already registering for notifications on all characteristics that support it when making the connection to the peripheral I can enter the passwords at that time before even connecting my app to the proxy. The peripheral we create later ensures that the proxy only sends updates to centrals that have registered themselves, so the only downside is that our proxy receives a bit more information from the peripheral device than it strictly needs to, but that should not be a problem.
 
 In the end of the method we check if `servicesAndCharacteristicsComplete()` returns true. If this is the case, we can notify our delegate that we are fully connected to the periperhal. The method `servicesAndCharacteristicsComplete()` is one we do not yet have in the central, so lets add it:
 ```swift
@@ -425,7 +425,7 @@ func writeData(characteristicUUID: CBUUID, data: Data, writeType: CBCharacterist
 }
 ```
 
-Adding this will give you a compiler error that `Value of type 'Data' has no member 'hexEncodedString'`. We can add that by create a new file called `Data+Hex.swift` and giving it the following contents:
+Adding this will give you a compiler error that `Value of type 'Data' has no member 'hexEncodedString'`. We can add that by creating a new file called `Data+Hex.swift` and giving it the following contents:
 ```swift
 import Foundation
 
@@ -535,7 +535,7 @@ class ViewController: NSViewController, BleCentralDelegate {
 
 As you can see, we declare and initialise the BleCentral and we register the ViewController as delegate. At the moment we cannot yet do much when the delegate methods are called except log that it happens. What we can do is tell the BleCentral to connect when the proxy is started and disconnect when it is stopped and this means we can start our proxy for the first time to test if we can connect to the peripheral device.
 
-Before we can do our first test run we need to set one more thing. Open the `.xcodeproj` for your project and on the tab `Signing and capabilities` under `App Sandbox` check `Bluetooth`. This allows our application to access the Bluetooth connection of your Mac when running from XCode. If we do no select this, Bluetooth will seem powered off for the app.
+Before we can do our first test run we need to set one more thing. Open the `.xcodeproj` for your project and on the tab `Signing and capabilities` under `App Sandbox` check `Bluetooth`. This allows our application to access the Bluetooth connection of your Mac when running from XCode. If we do not select this, Bluetooth will seem powered off for the app.
 
 Now run the app. If you have specified the BLEConstants the right way for your peripheral device, you should see a series of log statements that ends with `Connected to peripheral`.
 
@@ -559,8 +559,8 @@ Lets create another new file in our project that we call `BLEPeripheral.swift`. 
 Let's start with the delegate protocol again. The BlePeripheral that we are about to make needs to be able to communicate a couple of things to its delegate, these are:
 - That it has started advertising
 - That it has stopped advertising, including a reason why
-- To read data was received from a central
-- To write data was received from a central
+- To read data from a characterstic
+- To write data to a characteristic
 - Log messages that could be useful to print in the logView
 
 So we create a `BlePeripheralDelegate` protocol at the top of the `BlePeripheral.swift` that contains the following:
@@ -657,7 +657,7 @@ I must admit that the implementation of the `getPermissions` method is a bit of 
 - readEncryptionRequired
 - writeEncryptionRequired
 
-Since we are making a debug tool, encryption seems unnecessary to me so the last two options can be disregarded. It is possible to only specify a single `CBAttributePermissions` value for a characteristic and it made sense to me that any allowed to write would also be allowed to read, which lead to the implementation above.
+Since we are making a debug tool, encryption seems unnecessary to me so the last two options can be disregarded. It is only possible to specify a single `CBAttributePermissions` value for a characteristic and it made sense to me that any allowed to write would also be allowed to read, which lead to the implementation above.
 
 Now that the services and characteristics are ready, we can register our services and start advertising by changing the `startAdvertising` method to:
 ```swift
@@ -730,7 +730,7 @@ func peripheralManager(_ peripheral: CBPeripheralManager, didReceiveRead request
 }
 ```
 
-The property `self.openReadRequests` is now yet know, so we should add it as `private var openReadRequests: [CBATTRequest] = []`. We should also add the line `self.openReadRequests = []` to the beginning of `startAdvertising` to ensure this array is cleared when we (re)start advertising our peripheral.
+The property `self.openReadRequests` is not yet know, so we should add it as `private var openReadRequests: [CBATTRequest] = []`. We should also add the line `self.openReadRequests = []` to the beginning of `startAdvertising` to ensure this array is cleared when we (re)start advertising our peripheral.
 
 In order to receive requests to write data, we can implement the method `peripheralManager:(CBPeripheralManager *)peripheral didReceiveWriteRequests:(NSArray<CBATTRequest *> *)requests` of `CBPeripheralManagerDelegate`as follows:
 ```swift
@@ -890,6 +890,6 @@ class ViewController: NSViewController, BleCentralDelegate, BlePeripheralDelegat
 }
 ```
 
-This should be the last thing you need to get the proxy application up and running, so go ahead and start it up. You should the proxy connect to the peripheral device and you should then be able to fire up your application and connect to the proxy just as it would be that peripheral device. With all traffic going over the proxy you can now use PacketLogger to inspect it to your heart's content.
+This should be the last thing you need to get the proxy application up and running, so go ahead and start it up. You should see the proxy connect to the peripheral device and you should then be able to fire up your application and connect to the proxy just as it would normally connect to the peripheral device. With all traffic going over the proxy you can now use PacketLogger to inspect that traffic to your heart's content.
 
-If you are interested, the complete solution can be found [on Github](https://github.com/Luminis-Arnhem/BLEProxy). Just take care to change the BLEConstants that I have left open to values that fit your peripheral device.
+If you are interested, the complete solution can be found [on Github](https://github.com/Luminis-Arnhem/BLEProxy). Just take care to change the BLEConstants to values that fit your peripheral device before you run the app.
