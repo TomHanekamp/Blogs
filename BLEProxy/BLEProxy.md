@@ -158,7 +158,7 @@ func connect() {
 } 
 ```
 
-With the code above, when the centralmanager is not in the `.poweredOn` state when the central is asked to connect, it will not start scanning for peripheral and therefore not connect it to one. However we did tell it to do so. To fix this, we can use the `centralManagerDidUpdateState` method that we were required to implement. Change this method so that it looks like this:
+With the code above, if the centralmanager is not in the `.poweredOn` state when the central is asked to connect, it will not start scanning for peripherals and therefore not connect to one. However we did tell it to do so. To fix this, we can use the `centralManagerDidUpdateState` method that we were required to implement. Change this method so that it looks like this:
 ```swift
 func centralManagerDidUpdateState(_ central: CBCentralManager) {
     if central.state == .poweredOn && self.peripheralName != nil && !central.isScanning {
@@ -215,7 +215,7 @@ Just as with `self.peripheralName` earlier, `self.peripheral` does not yet exist
 
 The central we have created also does not yet implement the correct delegate for this peripheral, so let's add `CBPeripheralDelegate` to the protocols this class implements.
 
-When the centralmanager has either connected or failed to connect to the peripheral device, the central can once again be notified of this by implementing optional `CBCentralManagerDelegate` methods. If the connection was a success, the next step is to start discovering services on the peripheral. If the connection fails there is not much to do but inform our delegate. Therefore below the previus method, add the following:
+When the centralmanager has either connected or failed to connect to the peripheral device, the central can once again be notified of this by implementing optional `CBCentralManagerDelegate` methods. If the connection was a success, the next step is to start discovering services on the peripheral. If the connection fails there is not much to do but inform our delegate. Therefore below the previous method, add the following:
 ```swift
 func centralManager(_ central: CBCentralManager, didConnect peripheral: CBPeripheral) {
     self.delegate?.logMessage(message: "Connected to peripheral \(peripheral), discovering services.")
@@ -240,7 +240,7 @@ Now that we can connect to the peripheral we should also make sure we can discon
 }
 ```
 
-Also to inform our the delegate that we did indeed disconnect from the peripheral, add the following below the existing methods of the central:
+Also to inform our delegate that we did indeed disconnect from the peripheral, add the following below the existing methods of the central:
 
 ```swift
 func centralManager(_ central: CBCentralManager, didDisconnectPeripheral peripheral: CBPeripheral, error: Error?) {
@@ -252,7 +252,7 @@ func centralManager(_ central: CBCentralManager, didDisconnectPeripheral periphe
 }
 ```
 
-Discovering services once again happens through a delegate method, although this time the method is an optional method on the `CBPeripheralDelegate`. Before we can start implementing this method however we need to create a way to track that all services and later characteristics were found. To do this, add `static var SERVICES_AND_CHARACTERISTICS` to your existing BleConstants class and initialise it as:
+Discovering services once again happens through a delegate method, although this time the method is an optional method on the `CBPeripheralDelegate`. Before we can start implementing this method however we need to create a way to track that all services and later characteristics were successfully discovered. To do this, add `static var SERVICES_AND_CHARACTERISTICS` to your existing BleConstants class and initialise it as:
 ```swift
 static var SERVICES_AND_CHARACTERISTICS = [
     // Services
@@ -290,7 +290,7 @@ class BleService: Hashable {
 }
 ```
 
-Create a new file called `BLECharacteristic.swift` and give it the following contents:
+Create another new file called `BLECharacteristic.swift` and give it the following contents:
 
 ```swift
 import Foundation
@@ -344,7 +344,7 @@ func peripheral(_ peripheral: CBPeripheral, didDiscoverServices error: Error?) {
 
 In the implementation above we do a couple of things. First we check if there was an error and disconnect from the peripheral if this is the case. We also check if any services were found on the peripheral. If this is not the case it probably means something went wrong so we also disconnect from the peripheral. If there was no error and services were discovered, we check each of those services to see if they match the services we expected. When this is true we add the CBService instance to the BleService object and start discovering characteristics for the service.
 
-Like with services, discovered characteristics are also receive though a callback on the `CBPeripheralDelegate`. In this case `peripheral:(CBPeripheral *)peripheral didDiscoverCharacteristicsForService:(CBService *)service error:(nullable NSError *)error`. Let's implement this method as well with the following contents:
+Like with services, discovered characteristics are also received though a callback on the `CBPeripheralDelegate`. In this case `peripheral:(CBPeripheral *)peripheral didDiscoverCharacteristicsForService:(CBService *)service error:(nullable NSError *)error`. Let's implement this method as well with the following contents:
 ```swift
 func peripheral(_ peripheral: CBPeripheral, didDiscoverCharacteristicsFor service: CBService, error: Error?) {
     if let error = error {
@@ -375,7 +375,9 @@ func peripheral(_ peripheral: CBPeripheral, didDiscoverCharacteristicsFor servic
 }
 ```
 
-Once again we first check if there was an error and disconnect if this is the case. We also check if we were able to discover any characteristics for the service and if not, we treat it as an error and disconnect. If there was no error and characteristics were discovered we check them to see if they match characteristics we expect. If so we add the CBCharacteristic instance to the BleCharacteristic object. In the case that the characteristic has the `.notify` or `.indicate` property, we also register central to receive updates whenever the value of this characteristic changes. I had originally planned to do this only when the app connecting to my proxy registered for notifications. In my case however one of the characteristics that my app registers on for notifications is secured with a password which needs to be entered in the proxy when it registers for notifications on that characteristic. By already registering for notifications on all characteristics that support it when making the connection to the peripheral I can enter the passwords at that time before even connecting my app to the proxy. The peripheral we create later ensures that the proxy only sends updates to centrals that have registered themselves, so the only downside is that our proxy receives a bit more information from the peripheral device than it strictly needs to, but that should not be a problem.
+Once again we first check if there was an error and disconnect if this is the case. We also check if we were able to discover any characteristics for the service and if not, we treat it as an error and disconnect. If there was no error and characteristics were discovered we check them to see if they match characteristics we expect. If so we add the CBCharacteristic instance to the BleCharacteristic object. 
+
+In the case that the characteristic has the `.notify` or `.indicate` property, we also register central to receive updates whenever the value of this characteristic changes. I had originally planned to do this only when the app connecting to my proxy registered for notifications. In my case however one of the characteristics that my app registers on for notifications is secured with a password which needs to be entered in the proxy when it registers for notifications on that characteristic. By already registering for notifications on all characteristics that support it when making the connection to the peripheral I can enter the passwords at that time before even connecting my app to the proxy. The peripheral we create later ensures that the proxy only sends updates to centrals that have registered themselves, so the only downside is that our proxy receives a bit more information from the peripheral device than it strictly needs to, but that should not be a problem.
 
 In the end of the method we check if `servicesAndCharacteristicsComplete()` returns true. If this is the case, we can notify our delegate that we are fully connected to the periperhal. The method `servicesAndCharacteristicsComplete()` is one we do not yet have in the central, so lets add it:
 ```swift
