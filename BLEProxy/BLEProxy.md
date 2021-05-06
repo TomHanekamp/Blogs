@@ -1,4 +1,9 @@
+*Hey Tom, ik zie dat hij nog niet online staat, dus ik doe een poging tot reviewen*
+*Tip 1 markdown is niet het meest handigst voor reviewing*
+*Het eerste wat mij opviel nog voordat ik het ging lezen dat het erg lang is*
+
 # Bluetooth Low Energy logging by placing a Mac-in-the-middle
+*Ik mis hier wat het doel is van de blog, lost dit iets op voor mij als lezer?*
 ## Why?
 In the past two years or so I have been delving into Bluetooth Low Energy (BLE) for a project I did for one of our customers at Luminis Arnhem. In this project we have been tasked with implementing mobile applications for Android and iOS that used BLE to communicate with various products made by our customer. Because of this, a lot of my focus has gone to the BLE stacks that Apple and Google have created on their platforms for application developers to use. These stacks take care of the lower levels of the BLE protocol for developers and in very many ways this is a good thing. I don't know if it is even possible, without first having to hack your own device, to completely create your own BLE stack for these platforms and use that on iOS and Android devices instead but I certainly would not recommend you to try it.
 
