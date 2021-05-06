@@ -2,15 +2,21 @@
 *Tip 1 markdown is niet het meest handigst voor reviewing*
 *Het eerste wat mij opviel nog voordat ik het ging lezen dat het erg lang is*
 
+
+
 # Bluetooth Low Energy logging by placing a Mac-in-the-middle
-*Ik mis hier wat het doel is van de blog, lost dit iets op voor mij als lezer?*
+
 ## Why?
 In the past two years or so I have been delving into Bluetooth Low Energy (BLE) for a project I did for one of our customers at Luminis Arnhem. In this project we have been tasked with implementing mobile applications for Android and iOS that used BLE to communicate with various products made by our customer. Because of this, a lot of my focus has gone to the BLE stacks that Apple and Google have created on their platforms for application developers to use. These stacks take care of the lower levels of the BLE protocol for developers and in very many ways this is a good thing. I don't know if it is even possible, without first having to hack your own device, to completely create your own BLE stack for these platforms and use that on iOS and Android devices instead but I certainly would not recommend you to try it.
 
 One issue with using these stacks however, is that they make it hard as a developer to know what is actually being communicated at the protocol level. The API's that are offered are pretty high level so that they are easy to use, which is good. However the documentation provided with the API's, at least the documentation I have been able to find, is not very descriptive or transparant about how calling those API's translates to actual communication in the BLE protocol. So when your connection does not act as you expected it would and chances are that it will, what you really want to do is take a look at the lower level packets that are actually being transferred.
+*Ik mis hier wat het doel is van de blog, lost dit iets op voor mij als lezer?*
+*Klinkt stom maar als ik dit via google zou tegen komen zou dit mij helpen: Did you alsways wanted to know wat BLE protocol messages iOS and Android stacks are actually sending I let you know an show you how you can figure this out for your self *
 
 ## What's Mac got to do with it?
 Depending on the platform that you are developing for there may already be options available that you can use to get access to such logging without having to put in a lot of effort. For iOS devices with an OS version higher than 13 for example, [Apple already offers a solution](https://www.bluetooth.com/blog/a-new-way-to-debug-iosbluetooth-applications/) using PacketLogger that is fairly easy to set up. I have not actually tried this solution myself yet, but as the solution I am about to propose builds on some of the same concepts I can say with some confidence that this will work. In fact if iOS is the only target you are focussed on I would probably advise you to just use this instead and forget about my solution (Keep readin though! It never hurts to learn).
+
+
 
 If you are also targetting Android, the challenge becomes a lot bigger. If you google `logging ble on android` you will find plenty of blogs that explain how to enable [Bluetooth HCI snoop logging](https://source.android.com/devices/bluetooth/verifying_debugging#debugging-with-bug-reports) to achieve this, however I have a few problems with this. First of all the procedure requires a couple of manual steps on the device that you want to log which arent always clear. The official Android documentation and most blogs seem to agree on changing two settings and power cycling your Bluetooth connection (turn Bluetooth off and then on again), however I have also read blogs that insisted you needed to reboot your whole device to make it work. The location on your device where the logs are stored also tends to differ. It could be that these problems are caused by different Android OS versions or Android devices, but it leaves me unconvinced. The second issue that I have with this solution is that it simply logs everything your device does over Bluetooth to a file and leaves you with the task of figuring out where that one bit of communication you were actually interested in went. There is no option to view the logs during the connection and any filtering that you may want to do on the traffic completely relies on you to find a tool or way to do that. All in all capturing relevant BLE traffic using this method is a exercise in patience I have yet to succeed at.
 
